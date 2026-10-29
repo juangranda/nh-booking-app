@@ -105,8 +105,20 @@ public class AuthService : IAuthService
 			_db.Roles.Add(role);
 		}
 
+		// Link through navigation properties so EF fills in the new user's Id on save.
+		user.Roles.Add(new UserRole { User = user, Role = role });
 		_db.Users.Add(user);
-		_db.UserRoles.Add(new UserRole { UserId = user.Id, RoleId = defaultRoleId });
+
+		var (firstName, lastName) = SplitName(userName, email);
+		var employee = new Employee
+		{
+			User = user,
+			FirstName = firstName,
+			LastName = lastName,
+			Email = email,
+			CreatedAt = DateTime.Now
+		};
+		_db.Employees.Add(employee);
 
 		await _db.SaveChangesAsync(ct);
 
@@ -119,15 +131,22 @@ public class AuthService : IAuthService
 
 		var perms = rolePerms.Distinct().ToArray();
 
-		var employeeId = await _db.Employees
-			.Where(e => e.UserId == user.Id)
-			.Select(e => (int?)e.Id)
-			.FirstOrDefaultAsync(ct);
+		int? employeeId = employee.Id;
 
 		var (token, exp) = CreateJwt(user, roles, perms, employeeId);
 		var resp = new AuthResponse(token, exp, user.Id, user.UserName, roles, perms, employeeId);
 
 		return (true, resp, Codes.Ok, null);
+	}
+
+	// Employees.first_name/last_name are NOT NULL, so derive them from the user name or the email's local part.
+	private static (string firstName, string lastName) SplitName(string? userName, string email)
+	{
+		var source = (string.IsNullOrWhiteSpace(userName) ? email : userName).Split('@')[0];
+		var parts = source.Split(new[] { ' ', '.', '_', '-' }, 2, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+		var firstName = parts.Length > 0 ? parts[0] : source;
+		var lastName = parts.Length > 1 ? parts[1] : string.Empty;
+		return (firstName, lastName);
 	}
 
 	private (string token, DateTime expiresAt) CreateJwt(User user, IEnumerable<string> roles, IEnumerable<string> perms, int? employeeId)

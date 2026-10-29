@@ -13,4 +13,8 @@ public static class Codes
 	public const string EmailRequired = "ERR_AUTH_EMAIL_REQUIRED";
 	public const string PasswordWeak = "ERR_AUTH_PASSWORD_WEAK";
 	public const string EmailAlreadyExists = "ERR_AUTH_EMAIL_EXISTS";
+
+	public const string BadRequest = "ERR_BAD_REQUEST";
+	public const string Conflict = "ERR_CONFLICT";
+	public const string ServerError = "ERR_SERVER";
 }

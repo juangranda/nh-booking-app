@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using booking.api.Utils;
 using booking.core.Constants;
 using booking.infrastructure.Persistence;
 using booking.infrastructure.Services;
@@ -96,8 +97,12 @@ builder.Services.AddScoped<IBookingService, BookingService>();
 
 builder.Services.AddHostedService<DbInitializerHostedService>();
 
+builder.Services.AddProblemDetails();
+builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
+
 var app = builder.Build();
 
+app.UseExceptionHandler();
 app.UseSwagger();
 app.UseSwaggerUI();
 app.UseCors("AllowAngularApp");

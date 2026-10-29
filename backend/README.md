@@ -23,18 +23,31 @@ dotnet ef --version
 sqlite3 --version  # optional
 ```
 
-## Run (development)
+## JWT signing key
 
-Run the API project directly:
+The JWT signing key is not stored in `appsettings.json`. The API refuses to start without it, and it must be at least 32 bytes.
+
+Development (one-time setup per machine, stored outside the repo via .NET user-secrets):
 
 ```bash
-# from backend root
-dotnet restore
-dotnet build
-dotnet run --project src/booking.api/booking.api.csproj
+cd src/booking.api
+dotnet user-secrets set "Jwt:Key" "$(openssl rand -base64 48)"
 ```
 
-The server will listen on the configured Kestrel URLs (see appsettings or console output). Ensure the environment variables (connection string, JWT secret) are set before running.
+Production / other environments: set the `Jwt__Key` environment variable.
+
+Changing the key invalidates all previously issued tokens, so users must log in again.
+
+## Run (development)
+
+Run the API from its project folder (the database bootstrapper currently resolves `schema.sql` relative to it):
+
+```bash
+cd src/booking.api
+dotnet run --launch-profile http
+```
+
+The server listens on http://localhost:5170, and Swagger UI is at http://localhost:5170/swagger (Development only).
 
 ## Run tests
 

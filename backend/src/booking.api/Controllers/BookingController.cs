@@ -7,12 +7,14 @@ using booking.infrastructure.Services;
 namespace booking.api.Controllers;
 
 [ApiController]
+[Authorize]
 [Route("api/[controller]")]
 public class BookingController : ControllerBase
 {
 	private readonly IBookingService _svc;
 	public BookingController(IBookingService svc) => _svc = svc;
 
+	[Authorize(Policy = Permissions.Bookings.Read)]
 	[HttpGet]
 	public async Task<IActionResult> GetAll(CancellationToken ct)
 	{
@@ -20,6 +22,7 @@ public class BookingController : ControllerBase
 		return Ok(new { code, data });
 	}
 
+	[Authorize(Policy = Permissions.Bookings.Read)]
 	[HttpGet("{id:int}")]
 	public async Task<IActionResult> GetById(int id, CancellationToken ct)
 	{
@@ -28,6 +31,7 @@ public class BookingController : ControllerBase
 		return Ok(new { code, data });
 	}
 
+	[Authorize(Policy = Permissions.Bookings.Read)]
 	[HttpGet("Service")]
 	public async Task<IActionResult> GetByServiceId(
 		[FromQuery] int? serviceId,
@@ -45,6 +49,7 @@ public class BookingController : ControllerBase
 	}
 
 
+	[Authorize(Policy = Permissions.Bookings.Create)]
 	[HttpPost]
 	public async Task<IActionResult> Create([FromBody] BookingUpsertDto body, CancellationToken ct)
 	{
@@ -53,6 +58,7 @@ public class BookingController : ControllerBase
 		return CreatedAtAction(nameof(GetById), new { id }, new { code = Codes.Ok, data = new { id } });
 	}
 
+	[Authorize(Policy = Permissions.Bookings.Update)]
 	[HttpPut("{id:int}")]
 	public async Task<IActionResult> Update(int id, [FromBody] BookingUpsertDto body, CancellationToken ct)
 	{
@@ -62,6 +68,7 @@ public class BookingController : ControllerBase
 		return Ok(new { code = Codes.Ok });
 	}
 
+	[Authorize(Policy = Permissions.Bookings.Delete)]
 	[HttpDelete("{id:int}")]
 	public async Task<IActionResult> Delete(int id, CancellationToken ct)
 	{
@@ -71,6 +78,7 @@ public class BookingController : ControllerBase
 		return Ok(new { code = Codes.Ok });
 	}
 
+	[Authorize(Policy = Permissions.Bookings.Read)]
 	[HttpPost("availability")]
 	public async Task<IActionResult> GetAvailability([FromBody] Availability body, CancellationToken ct)
 	{

@@ -7,12 +7,14 @@ using booking.infrastructure.Services;
 namespace booking.api.Controllers;
 
 [ApiController]
+[Authorize]
 [Route("api/[controller]")]
 public class OfficeController : ControllerBase
 {
 	private readonly IOfficeService _svc;
 	public OfficeController(IOfficeService svc) => _svc = svc;
 
+	[Authorize(Policy = Permissions.Offices.Read)]
 	[HttpGet]
 	public async Task<IActionResult> GetAll(CancellationToken ct)
 	{
@@ -20,6 +22,7 @@ public class OfficeController : ControllerBase
 		return Ok(new { code, data });
 	}
 
+	[Authorize(Policy = Permissions.Offices.Read)]
 	[HttpGet("{id:int}")]
 	public async Task<IActionResult> GetById(int id, CancellationToken ct)
 	{
@@ -28,6 +31,7 @@ public class OfficeController : ControllerBase
 		return Ok(new { code, data });
 	}
 
+	[Authorize(Policy = Permissions.Offices.Create)]
 	[HttpPost]
 	public async Task<IActionResult> Create([FromBody] OfficeUpsertDto body, CancellationToken ct)
 	{
@@ -36,6 +40,7 @@ public class OfficeController : ControllerBase
 		return CreatedAtAction(nameof(GetById), new { id }, new { code = Codes.Ok, data = new { id } });
 	}
 
+	[Authorize(Policy = Permissions.Offices.Update)]
 	[HttpPut("{id:int}")]
 	public async Task<IActionResult> Update(int id, [FromBody] OfficeUpsertDto body, CancellationToken ct)
 	{
@@ -45,6 +50,7 @@ public class OfficeController : ControllerBase
 		return Ok(new { code = Codes.Ok });
 	}
 
+	[Authorize(Policy = Permissions.Offices.Delete)]
 	[HttpDelete("{id:int}")]
 	public async Task<IActionResult> Delete(int id, CancellationToken ct)
 	{

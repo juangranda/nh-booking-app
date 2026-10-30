@@ -7,12 +7,14 @@ using booking.infrastructure.Services;
 namespace booking.api.Controllers;
 
 [ApiController]
+[Authorize]
 [Route("api/[controller]")]
 public class ServicesController : ControllerBase
 {
 	private readonly IServicesService _svc;
 	public ServicesController(IServicesService svc) => _svc = svc;
 
+	[Authorize(Policy = Permissions.Services.Read)]
 	[HttpGet]
 	public async Task<IActionResult> GetAll(CancellationToken ct)
 	{
@@ -20,6 +22,7 @@ public class ServicesController : ControllerBase
 		return Ok(new { code, data });
 	}
 
+	[Authorize(Policy = Permissions.Services.Read)]
 	[HttpGet("{id:int}")]
 	public async Task<IActionResult> GetById(int id, CancellationToken ct)
 	{
@@ -28,6 +31,7 @@ public class ServicesController : ControllerBase
 		return Ok(new { code, data });
 	}
 
+	[Authorize(Policy = Permissions.Services.Create)]
 	[HttpPost]
 	public async Task<IActionResult> Create([FromBody] ServiceUpsertDto body, CancellationToken ct)
 	{
@@ -36,6 +40,7 @@ public class ServicesController : ControllerBase
 		return CreatedAtAction(nameof(GetById), new { id }, new { code = Codes.Ok, data = new { id } });
 	}
 
+	[Authorize(Policy = Permissions.Services.Update)]
 	[HttpPut("{id:int}")]
 	public async Task<IActionResult> Update(int id, [FromBody] ServiceUpsertDto body, CancellationToken ct)
 	{
@@ -45,6 +50,7 @@ public class ServicesController : ControllerBase
 		return Ok(new { code = Codes.Ok });
 	}
 
+	[Authorize(Policy = Permissions.Services.Delete)]
 	[HttpDelete("{id:int}")]
 	public async Task<IActionResult> Delete(int id, CancellationToken ct)
 	{

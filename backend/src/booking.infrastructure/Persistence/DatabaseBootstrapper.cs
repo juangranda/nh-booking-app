@@ -45,6 +45,27 @@ public static class DatabaseBootstrapper
 		await SeedAsync(db, ct);
 	}
 
+	private static async Task EnsureRoleAsync(AppDbContext db, string roleId, string name, CancellationToken ct)
+	{
+		if (!await db.Roles.AnyAsync(r => r.Id == roleId, ct))
+			db.Roles.Add(new Role { Id = roleId, Name = name });
+	}
+
+	private static async Task EnsureUserRoleAsync(AppDbContext db, int userId, string roleId, CancellationToken ct)
+	{
+		if (!await db.UserRoles.AnyAsync(ur => ur.UserId == userId && ur.RoleId == roleId, ct))
+			db.UserRoles.Add(new UserRole { UserId = userId, RoleId = roleId });
+	}
+
+	private static async Task EnsureRoleClaimAsync(AppDbContext db, string roleId, string permission, CancellationToken ct)
+	{
+		if (!await db.RoleClaims.AnyAsync(rc =>
+			rc.RoleId == roleId && rc.ClaimType == Permissions.ClaimType && rc.ClaimValue == permission, ct))
+		{
+			db.RoleClaims.Add(new RoleClaim { RoleId = roleId, ClaimType = Permissions.ClaimType, ClaimValue = permission });
+		}
+	}
+
 	private static IEnumerable<string> SplitSqlStatements(string sql) =>
 		sql.Replace("\r", "").Split(";\n", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
@@ -96,27 +117,37 @@ public static class DatabaseBootstrapper
 			db.Users.AddRange(users);
 		}
 
-		var role = await db.Roles.AsNoTracking().FirstOrDefaultAsync(r => r.Id == "r_admin", ct);
-		if (role is null)
+		await EnsureRoleAsync(db, roleId:"r_admin", name:"Admin", ct);
+		await EnsureRoleAsync(db, roleId:"r_user", name:"User", ct);
+
+		await EnsureUserRoleAsync(db, 1, "r_admin", ct);
+		foreach (var userId in new[] { 2, 3, 4 })
 		{
-			role = new Role { Id = "r_admin", Name = "Admin" };
-			db.Roles.Add(role);
+			await EnsureUserRoleAsync(db, userId, "r_user", ct);
 		}
 
-		var hasUserRole = await db.UserRoles.AnyAsync(ur => ur.UserId == 1 && ur.RoleId == "r_admin", ct);
-		if (!hasUserRole)
-			db.UserRoles.Add(new UserRole { UserId = 1, RoleId = "r_admin" });
-
-		if (!await db.RoleClaims.AnyAsync(rc =>
-			rc.RoleId == "r_admin" && rc.ClaimType == Permissions.ClaimType && rc.ClaimValue == Permissions.Bookings.Read, ct))
+		// Admins can do everything.
+		string[] adminPermissions =
 		{
-			db.RoleClaims.Add(new RoleClaim { RoleId = "r_admin", ClaimType = Permissions.ClaimType, ClaimValue = Permissions.Bookings.Read });
+			Permissions.Bookings.Read, Permissions.Bookings.Create, Permissions.Bookings.Update, Permissions.Bookings.Delete,
+			Permissions.Services.Read, Permissions.Services.Create, Permissions.Services.Update, Permissions.Services.Delete,
+			Permissions.Offices.Read, Permissions.Offices.Create, Permissions.Offices.Update, Permissions.Offices.Delete,
+		};
+		// Users can browse offices and services and manage bookings (limited to their own in BookingService).
+		string[] userPermissions =
+		{
+			Permissions.Bookings.Read, Permissions.Bookings.Create, Permissions.Bookings.Update, Permissions.Bookings.Delete,
+			Permissions.Services.Read,
+			Permissions.Offices.Read,
+		};
+
+		foreach (var permission in adminPermissions)
+		{
+			await EnsureRoleClaimAsync(db, "r_admin", permission, ct);
 		}
-
-		if (!await db.RoleClaims.AnyAsync(rc =>
-			rc.RoleId == "r_admin" && rc.ClaimType == Permissions.ClaimType && rc.ClaimValue == Permissions.Bookings.Create, ct))
+		foreach (var permission in userPermissions)
 		{
-			db.RoleClaims.Add(new RoleClaim { RoleId = "r_admin", ClaimType = Permissions.ClaimType, ClaimValue = Permissions.Bookings.Create });
+			await EnsureRoleClaimAsync(db, "r_user", permission, ct);
 		}
 
 		if (!await db.Offices.AnyAsync(ct))

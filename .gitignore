@@ -123,3 +123,5 @@ tools/
 
 # DB
 backend/src/booking.api/app.db
+# Postman collections (local testing)
+postman/

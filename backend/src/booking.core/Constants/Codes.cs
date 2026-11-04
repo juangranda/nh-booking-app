@@ -17,4 +17,8 @@ public static class Codes
 	public const string BadRequest = "ERR_BAD_REQUEST";
 	public const string Conflict = "ERR_CONFLICT";
 	public const string ServerError = "ERR_SERVER";
+
+	public const string BookingInvalid = "ERR_BOOKING_INVALID";
+	public const string BookingConflict = "ERR_BOOKING_CONFLICT";
+	public const string BookingLimitReached = "ERR_BOOKING_LIMIT";
 }

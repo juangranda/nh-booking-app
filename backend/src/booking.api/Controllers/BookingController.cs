@@ -12,7 +12,10 @@ namespace booking.api.Controllers;
 public class BookingController : ControllerBase
 {
 	private readonly IBookingService _svc;
-	public BookingController(IBookingService svc) => _svc = svc;
+	public BookingController(IBookingService svc)
+	{
+		_svc = svc;
+	}
 
 	[Authorize(Policy = Permissions.Bookings.Read)]
 	[HttpGet]
@@ -48,13 +51,14 @@ public class BookingController : ControllerBase
 		return Ok(new { code, data });
 	}
 
-
 	[Authorize(Policy = Permissions.Bookings.Create)]
 	[HttpPost]
 	public async Task<IActionResult> Create([FromBody] BookingUpsertDto body, CancellationToken ct)
 	{
-		var (ok, id, code, message) = await _svc.CreateAsync(body, ct);
-		if (!ok) return BadRequest(new { code, message });
+		if (CurrentEmployeeId() is not int employeeId) return NoEmployee();
+
+		var (ok, id, code, message) = await _svc.CreateAsync(body, employeeId, ct);
+		if (!ok) return Failure(code, message);
 		return CreatedAtAction(nameof(GetById), new { id }, new { code = Codes.Ok, data = new { id } });
 	}
 
@@ -62,9 +66,10 @@ public class BookingController : ControllerBase
 	[HttpPut("{id:int}")]
 	public async Task<IActionResult> Update(int id, [FromBody] BookingUpsertDto body, CancellationToken ct)
 	{
-		var (ok, code, message) = await _svc.UpdateAsync(id, body, ct);
-		if (!ok && code == Codes.NotFound) return NotFound(new { code, message });
-		if (!ok) return BadRequest(new { code, message });
+		if (CurrentEmployeeId() is not int employeeId) return NoEmployee();
+
+		var (ok, code, message) = await _svc.UpdateAsync(id, body, employeeId, User.IsInRole("Admin"), ct);
+		if (!ok) return Failure(code, message);
 		return Ok(new { code = Codes.Ok });
 	}
 
@@ -72,10 +77,35 @@ public class BookingController : ControllerBase
 	[HttpDelete("{id:int}")]
 	public async Task<IActionResult> Delete(int id, CancellationToken ct)
 	{
-		var (ok, code, message) = await _svc.DeleteAsync(id, ct);
-		if (!ok && code == Codes.NotFound) return NotFound(new { code, message });
-		if (!ok) return BadRequest(new { code, message });
+		if (CurrentEmployeeId() is not int employeeId) return NoEmployee();
+
+		var (ok, code, message) = await _svc.DeleteAsync(id, employeeId, User.IsInRole("Admin"), ct);
+		if (!ok) return Failure(code, message);
 		return Ok(new { code = Codes.Ok });
+	}
+
+	// Leveraging the middleware logic that sets the JWT.
+	// "User" is set by AuthService.CreateJwt for users when they have an Employee record.
+	private int? CurrentEmployeeId()
+	{
+		return int.TryParse(User.FindFirst("employee_id")?.Value, out var id) ? id : null;
+	}
+
+	private ObjectResult NoEmployee()
+	{
+		return StatusCode(StatusCodes.Status403Forbidden,
+			new { code = Codes.Forbidden, message = "Your account isn't linked to an employee, so it can't make bookings." });
+	}
+
+	private IActionResult Failure(string code, string? message)
+	{
+		return code switch
+		{
+			Codes.NotFound => NotFound(new { code, message }),
+			Codes.Forbidden => StatusCode(StatusCodes.Status403Forbidden, new { code, message }),
+			Codes.BookingConflict => Conflict(new { code, message }),
+			_ => BadRequest(new { code, message })
+		};
 	}
 
 	[Authorize(Policy = Permissions.Bookings.Read)]

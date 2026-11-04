@@ -9,13 +9,15 @@ public record BookingModel(
 	DateTime? createdAt
 );
 
+// id, employeeId and createdAt are ignored by the API (the server sets them); they stay
+// optional so older clients that still send them, even as null, keep working.
 public record BookingUpsertDto(
-	int id,
+	int? id,
 	int serviceDetailId,
-	int employeeId,
+	int? employeeId,
 	DateTime startDatetime,
 	DateTime endDatetime,
-	DateTime createdAt
+	DateTime? createdAt
 );
 
 public record AvailabilityTimes(

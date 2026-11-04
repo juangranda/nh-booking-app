@@ -7,6 +7,7 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using booking.api.Utils;
 using booking.core.Constants;
+using booking.core.Options;
 using booking.infrastructure.Persistence;
 using booking.infrastructure.Services;
 
@@ -89,6 +90,8 @@ builder.Services.AddFluentValidationAutoValidation()
 				.AddFluentValidationClientsideAdapters();
 
 builder.Services.AddValidatorsFromAssemblyContaining<RegisterRequestValidator>();
+
+builder.Services.Configure<BookingOptions>(builder.Configuration.GetSection(BookingOptions.SectionName));
 
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IServicesService, ServicesService>();

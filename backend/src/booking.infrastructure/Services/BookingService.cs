@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using booking.core.Constants;
@@ -230,43 +231,35 @@ public class BookingService : IBookingService
 
 	public async Task<(bool ok, List<AvailabilityTimes> data, string? message)> GetAvailability(Availability dto, CancellationToken ct)
 	{
-		string initialHour = "08:00";
-		string finalHour = "15:00";
-		var availabilityList = new List<AvailabilityTimes>();
+		// AvailabilityValidator has already checked the date format and the frequency range.
+		// TODO - Create validation filters instead of using AddFluentValidationAutoValidation during registration as this is no longer the recommended approach.
+		var date = DateTime.ParseExact(dto.date, "yyyy-MM-dd", CultureInfo.InvariantCulture);
+		var slotLength = TimeSpan.FromMinutes(int.Parse(dto.frequency, CultureInfo.InvariantCulture));
+		var open = date.AddHours(_hours.OpenHour);
+		var close = date.AddHours(_hours.CloseHour);
 
-		var date = DateTime.Parse(dto.date).Date;
-		DateTime startTime = date.Add(TimeSpan.Parse(initialHour));
-		DateTime endTime = date.Add(TimeSpan.Parse(finalHour));
-
-		var dayStart = date.Date;
-		var dayEnd = dayStart.AddDays(1);
-
+		// Load every booking that touches the day, including one that started the day before.
+		var dayStart = date;
+		var dayEnd = date.AddDays(1);
 		var bookingsOnDate = await _db.Bookings
 			.AsNoTracking()
-			.Where(x =>
-				x.ServiceDetailId == dto.id &&
-				x.StartDatetime >= dayStart &&
-				x.StartDatetime < dayEnd
-			)
+			.Where(b =>
+				b.ServiceDetailId == dto.id &&
+				b.StartDatetime < dayEnd &&
+				b.EndDatetime > dayStart)
+			.Select(b => new { b.StartDatetime, b.EndDatetime })
 			.ToListAsync(ct);
 
-		for (var time = startTime; time < endTime; time = time.AddMinutes(int.Parse(dto.frequency)))
+		// Only offer slots that fit inside business hours, since bookings past closing are rejected.
+		var slots = new List<AvailabilityTimes>();
+		for (var slotStart = open; slotStart + slotLength <= close; slotStart += slotLength)
 		{
-			var isAvailable = true;
-
-			foreach (var b in bookingsOnDate)
-			{
-				if (b.StartDatetime <= time && b.EndDatetime > time)
-				{
-					isAvailable = false;
-					break;
-				}
-			}
-
-			availabilityList.Add(new AvailabilityTimes(time.ToString("HH:mm"), isAvailable));
+			var slotEnd = slotStart + slotLength;
+			var isBusy = bookingsOnDate.Any(b => b.StartDatetime < slotEnd && b.EndDatetime > slotStart);
+			slots.Add(new AvailabilityTimes(slotStart.ToString("HH:mm", CultureInfo.InvariantCulture), !isBusy));
 		}
 
-		return (true, availabilityList, null);
+		return (true, slots, null);
 	}
 
 	private static BookingModel MapToModel(Booking s) =>

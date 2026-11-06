@@ -43,9 +43,9 @@ public class OfficeService : IOfficeService
 
 	public async Task<(bool ok, int id, string code, string? message)> CreateAsync(OfficeUpsertDto dto, CancellationToken ct)
 	{
+		// The database assigns the id; any id in the body is ignored.
 		var s = new Office
 		{
-			Id = dto.id,
 			Name = dto.name,
 			Image = dto.image
 		};
@@ -71,6 +71,11 @@ public class OfficeService : IOfficeService
 	{
 		var s = await _db.Offices.FirstOrDefaultAsync(x => x.Id == id, ct);
 		if (s is null) return (false, Codes.NotFound, "Office not found.");
+
+		if (await _db.Services.AnyAsync(x => x.OfficeId == id, ct))
+		{
+			return (false, Codes.InUse, "This office still has services. Delete them first.");
+		}
 
 		_db.Offices.Remove(s);
 		await _db.SaveChangesAsync(ct);

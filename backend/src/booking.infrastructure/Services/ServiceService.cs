@@ -89,21 +89,43 @@ public class ServicesService : IServicesService
 		s.MinMax = dto.minMax;
 		s.ImageUrl = dto.imageUrl;
 
-		_db.ServiceDetails.RemoveRange(s.ServiceDetails);
-		s.ServiceDetails.Clear();
+		// Match details by id so existing ones (and the bookings that point at them) are kept.
+		var requested = dto.serviceDetails ?? [];
+		var existingById = s.ServiceDetails.ToDictionary(d => d.Id);
 
-		if (dto.serviceDetails is { Count: > 0 })
+		var unknownId = requested.FirstOrDefault(d => d.id is int detailId && !existingById.ContainsKey(detailId));
+		if (unknownId is not null)
 		{
-			foreach (var d in dto.serviceDetails)
+			return (false, Codes.BadRequest, $"Service detail {unknownId.id} doesn't belong to this service.");
+		}
+
+		var keptIds = requested.Where(d => d.id.HasValue).Select(d => d.id!.Value).ToHashSet();
+		var removed = s.ServiceDetails.Where(d => !keptIds.Contains(d.Id)).ToList();
+		if (removed.Count > 0)
+		{
+			var removedIds = removed.Select(d => d.Id).ToList();
+			var bookedNames = await _db.Bookings
+				.Where(b => removedIds.Contains(b.ServiceDetailId))
+				.Select(b => b.ServiceDetail!.Name)
+				.Distinct()
+				.ToListAsync(ct);
+			if (bookedNames.Count > 0)
 			{
-				s.ServiceDetails.Add(new ServiceDetail
-				{
-					Name = d.name,
-					Description = d.description,
-					Capacity = d.capacity,
-					IconUrl = d.iconUrl,
-					CreatedAt = DateTime.UtcNow
-				});
+				return (false, Codes.InUse, $"Can't remove {string.Join(", ", bookedNames)} because it has bookings.");
+			}
+			_db.ServiceDetails.RemoveRange(removed);
+		}
+
+		foreach (var d in requested)
+		{
+			var detail = d.id is int detailId ? existingById[detailId] : new ServiceDetail { CreatedAt = DateTime.UtcNow };
+			detail.Name = d.name;
+			detail.Description = d.description;
+			detail.Capacity = d.capacity;
+			detail.IconUrl = d.iconUrl;
+			if (!d.id.HasValue)
+			{
+				s.ServiceDetails.Add(detail);
 			}
 		}
 
@@ -113,9 +135,16 @@ public class ServicesService : IServicesService
 
 	public async Task<(bool ok, string code, string? message)> DeleteAsync(int id, CancellationToken ct)
 	{
-		var s = await _db.Services.FirstOrDefaultAsync(x => x.Id == id, ct);
+		var s = await _db.Services.Include(x => x.ServiceDetails).FirstOrDefaultAsync(x => x.Id == id, ct);
 		if (s is null) return (false, Codes.NotFound, "Service not found.");
 
+		if (await _db.Bookings.AnyAsync(b => b.ServiceDetail!.ServiceId == id, ct))
+		{
+			return (false, Codes.InUse, "This service has bookings, so it can't be deleted.");
+		}
+
+		// The details reference the service, so they go first.
+		_db.ServiceDetails.RemoveRange(s.ServiceDetails);
 		_db.Services.Remove(s);
 		await _db.SaveChangesAsync(ct);
 		return (true, Codes.Ok, null);

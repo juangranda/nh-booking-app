@@ -56,6 +56,7 @@ public class OfficeController : ControllerBase
 	{
 		var (ok, code, message) = await _svc.DeleteAsync(id, ct);
 		if (!ok && code == Codes.NotFound) return NotFound(new { code, message });
+		if (!ok && code == Codes.InUse) return Conflict(new { code, message });
 		if (!ok) return BadRequest(new { code, message });
 		return Ok(new { code = Codes.Ok });
 	}

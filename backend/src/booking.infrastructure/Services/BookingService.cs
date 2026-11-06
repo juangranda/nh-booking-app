@@ -56,6 +56,11 @@ public class BookingService : IBookingService
 	int serviceId,
 	CancellationToken ct)
 	{
+		if (!await _db.Services.AnyAsync(s => s.Id == serviceId, ct))
+		{
+			return (false, [], Codes.NotFound);
+		}
+
 		var items = await _db.Bookings
 			.AsNoTracking()
 			.Where(b => b.ServiceDetail!.ServiceId == serviceId)

@@ -16,9 +16,9 @@ public class ServicesController : ControllerBase
 
 	[Authorize(Policy = Permissions.Services.Read)]
 	[HttpGet]
-	public async Task<IActionResult> GetAll(CancellationToken ct)
+	public async Task<IActionResult> GetAll([FromQuery] int? officeId, CancellationToken ct)
 	{
-		var (ok, data, code) = await _svc.GetAllAsync(ct);
+		var (ok, data, code) = await _svc.GetAllAsync(officeId, ct);
 		return Ok(new { code, data });
 	}
 

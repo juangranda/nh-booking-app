@@ -8,7 +8,7 @@ namespace booking.infrastructure.Services;
 
 public interface IServicesService
 {
-	Task<(bool ok, List<ServiceModel> data, string code)> GetAllAsync(CancellationToken ct);
+	Task<(bool ok, List<ServiceModel> data, string code)> GetAllAsync(int? officeId, CancellationToken ct);
 	Task<(bool ok, ServiceModel? data, string code)> GetByIdAsync(int id, CancellationToken ct);
 	Task<(bool ok, int id, string code, string? message)> CreateAsync(ServiceUpsertDto dto, CancellationToken ct);
 	Task<(bool ok, string code, string? message)> UpdateAsync(int id, ServiceUpsertDto dto, CancellationToken ct);
@@ -20,11 +20,13 @@ public class ServicesService : IServicesService
 	private readonly AppDbContext _db;
 	public ServicesService(AppDbContext db) => _db = db;
 
-	public async Task<(bool ok, List<ServiceModel> data, string code)> GetAllAsync(CancellationToken ct)
+	// officeId is optional: without it, every office's services are returned.
+	public async Task<(bool ok, List<ServiceModel> data, string code)> GetAllAsync(int? officeId, CancellationToken ct)
 	{
 		var items = await _db.Services
 			.AsNoTracking()
 			.Include(s => s.ServiceDetails)
+			.Where(s => officeId == null || s.OfficeId == officeId)
 			.OrderBy(s => s.Id)
 			.Select(s => MapToModel(s))
 			.ToListAsync(ct);

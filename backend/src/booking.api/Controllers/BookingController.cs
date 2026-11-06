@@ -41,12 +41,11 @@ public class BookingController : ControllerBase
 		CancellationToken ct)
 	{
 		if (!serviceId.HasValue)
-			return BadRequest(new { code = Codes.NotFound, message = "serviceId is required." });
+			return BadRequest(new { code = Codes.BadRequest, message = "serviceId is required." });
 
+		// A service with no bookings returns an empty list; only an unknown service is a 404.
 		var (ok, data, code) = await _svc.GetByServiceIdAsync(serviceId.Value, ct);
-
-		if (!ok || data is null || !data.Any())
-			return NotFound(new { code = Codes.NotFound, message = "Bookings not found." });
+		if (!ok) return NotFound(new { code, message = "Service not found." });
 
 		return Ok(new { code, data });
 	}

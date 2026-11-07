@@ -19,8 +19,8 @@ public class DbInitializerHostedService : IHostedService
 		using var scope = _sp.CreateScope();
 		var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-		var infraRoot = Path.Combine(_env.ContentRootPath, "..", "booking.infrastructure");
-		await DatabaseBootstrapper.InitAsync(db, infraRoot, cancellationToken);
+		var schemaPath = Path.Combine(AppContext.BaseDirectory, "Persistence", "Sql", "schema.sql");
+		await DatabaseBootstrapper.InitAsync(db, schemaPath, cancellationToken);
 	}
 
 	public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;

@@ -1,5 +1,5 @@
-using System.Data;
-using Microsoft.AspNetCore.Identity;              // <-- para PasswordHasher<T>
+using System.Globalization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using booking.core.Constants;
 using booking.core.Models;
@@ -8,25 +8,24 @@ namespace booking.infrastructure.Persistence;
 
 public static class DatabaseBootstrapper
 {
-	public static async Task InitAsync(AppDbContext db, string infraRootPath, CancellationToken ct = default)
+	public static async Task InitAsync(AppDbContext db, string schemaPath, CancellationToken ct = default)
 	{
-		// 1) ¿Existe la tabla Users?
-		bool hasUsersTable;
-		await using (var conn = db.Database.GetDbConnection())
+		bool usersTableExists;
+		await db.Database.OpenConnectionAsync(ct);
+		try
 		{
-			if (conn.State != ConnectionState.Open)
-				await conn.OpenAsync(ct);
-
-			await using var cmd = conn.CreateCommand();
+			await using var cmd = db.Database.GetDbConnection().CreateCommand();
 			cmd.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='Users';";
 			var result = (long)(await cmd.ExecuteScalarAsync(ct) ?? 0L);
-			hasUsersTable = result > 0;
+			usersTableExists = result > 0;
+		}
+		finally
+		{
+			await db.Database.CloseConnectionAsync();
 		}
 
-		// 2) Si NO existe, ejecutar schema.sql una sola vez
-		if (!hasUsersTable)
+		if (!usersTableExists)
 		{
-			var schemaPath = Path.Combine(infraRootPath, "Persistence", "Sql", "schema.sql");
 			if (!File.Exists(schemaPath))
 				throw new FileNotFoundException($"No se encuentra el schema en: {schemaPath}");
 
@@ -41,7 +40,6 @@ public static class DatabaseBootstrapper
 			await tx.CommitAsync(ct);
 		}
 
-		// 3) Seed idempotente
 		await SeedAsync(db, ct);
 	}
 
@@ -126,14 +124,13 @@ public static class DatabaseBootstrapper
 			await EnsureUserRoleAsync(db, userId, "r_user", ct);
 		}
 
-		// Admins can do everything.
 		string[] adminPermissions =
 		{
 			Permissions.Bookings.Read, Permissions.Bookings.Create, Permissions.Bookings.Update, Permissions.Bookings.Delete,
 			Permissions.Services.Read, Permissions.Services.Create, Permissions.Services.Update, Permissions.Services.Delete,
 			Permissions.Offices.Read, Permissions.Offices.Create, Permissions.Offices.Update, Permissions.Offices.Delete,
 		};
-		// Users can browse offices and services and manage bookings (limited to their own in BookingService).
+
 		string[] userPermissions =
 		{
 			Permissions.Bookings.Read, Permissions.Bookings.Create, Permissions.Bookings.Update, Permissions.Bookings.Delete,
@@ -171,7 +168,7 @@ public static class DatabaseBootstrapper
 					LastName = "Admin",
 					Email = "admin@demo.com",
 					Phone = "+1-555-0124",
-					CreatedAt = DateTime.Parse("2023-06-20T14:30:00Z")
+					CreatedAt = LocalDate("2023-06-20T14:30:00")
 				},
 				new Employee
 				{
@@ -181,7 +178,7 @@ public static class DatabaseBootstrapper
 					LastName = "Johnson",
 					Email = "sarah.johnson@company.com",
 					Phone = "+1-555-0123",
-					CreatedAt = DateTime.Parse("2023-06-20T14:30:00Z")
+					CreatedAt = LocalDate("2023-06-20T14:30:00")
 				},
 				new Employee
 				{
@@ -191,7 +188,7 @@ public static class DatabaseBootstrapper
 					LastName = "Chen",
 					Email = "michael.chen@company.com",
 					Phone = "+1-555-0124",
-					CreatedAt = DateTime.Parse("2023-08-10T10:15:00Z")
+					CreatedAt = LocalDate("2023-08-10T10:15:00")
 				},
 				new Employee
 				{
@@ -201,7 +198,7 @@ public static class DatabaseBootstrapper
 					LastName = "Rodriguez",
 					Email = "emma.rodriguez@company.com",
 					Phone = "+1-555-0125",
-					CreatedAt = DateTime.Parse("2024-02-05T09:45:00Z")
+					CreatedAt = LocalDate("2024-02-05T09:45:00")
 				}
 			);
 		}
@@ -280,24 +277,38 @@ public static class DatabaseBootstrapper
 			db.Services.AddRange(services);
 		}
 
+		await db.SaveChangesAsync(ct);
+
 		var employee = await db.Employees.FirstOrDefaultAsync(e => e.Email == "sarah.johnson@company.com", ct);
 		var serviceDetail = await db.ServiceDetails.FirstOrDefaultAsync(sd => sd.Name == "Small Room", ct);
 
-		if (employee is not null && serviceDetail is not null)
+		if (employee is not null && serviceDetail is not null && !await db.Bookings.AnyAsync(ct))
 		{
-			if (!await db.Bookings.AnyAsync(ct))
+			var day = NextWeekday(from:DateTime.Today);
+			db.Bookings.Add(new Booking
 			{
-				db.Bookings.Add(new Booking
-				{
-					ServiceDetailId = serviceDetail.Id,
-					EmployeeId = employee.Id,
-					StartDatetime = DateTime.Parse("2024-10-18T10:00:00Z"),
-					EndDatetime = DateTime.Parse("2024-10-18T10:45:00Z"),
-					CreatedAt = DateTime.Parse("2024-10-15T16:45:00Z")
-				});
-			}
+				ServiceDetailId = serviceDetail.Id,
+				EmployeeId = employee.Id,
+				StartDatetime = day.AddHours(10),
+				EndDatetime = day.AddHours(10).AddMinutes(45),
+				CreatedAt = DateTime.Now
+			});
+			await db.SaveChangesAsync(ct);
 		}
+	}
 
-		await db.SaveChangesAsync(ct);
+	private static DateTime NextWeekday(DateTime from)
+	{
+		var day = from.AddDays(1);
+		while (day.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday)
+		{
+			day = day.AddDays(1);
+		}
+		return day;
+	}
+
+	private static DateTime LocalDate(string value)
+	{
+		return DateTime.ParseExact(value, "yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture);
 	}
 }

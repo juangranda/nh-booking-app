@@ -24,6 +24,14 @@
   width: 100%;
 }
 
+.modal-error {
+  color: #b3261e;
+  background: #fdecea;
+  border-radius: 4px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.9rem;
+}
+
 .modal-actions {
   display: flex;
   justify-content: flex-end;

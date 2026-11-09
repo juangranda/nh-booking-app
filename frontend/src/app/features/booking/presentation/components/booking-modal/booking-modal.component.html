@@ -41,6 +41,8 @@
     {{ form.get("endDate")?.value | date : "dd-MM-yyyy hh:mm a" }}
   </div>
 
+  <div class="modal-error" role="alert" *ngIf="errorMsg">{{ errorMsg }}</div>
+
   <div class="modal-actions">
     <button
       mat-stroked-button

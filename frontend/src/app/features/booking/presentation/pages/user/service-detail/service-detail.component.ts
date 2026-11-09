@@ -1,10 +1,11 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
+  effect,
   inject,
-  OnDestroy,
-  OnInit,
   signal,
+  untracked,
 } from '@angular/core';
 import { FormsModule, ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
@@ -18,13 +19,12 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { ActivatedRoute, Router } from '@angular/router';
 import {
   catchError,
-  delay,
   EMPTY,
+  exhaustMap,
   filter,
   finalize,
   Subscription,
-  switchMap,
-  tap,
+  takeUntil,
 } from 'rxjs';
 import { SaveBookingUseCase } from '../../../../domain/use-cases/save-booking.usecase';
 import { BookingModal } from '../../../components/booking-modal/booking-modal.component';
@@ -54,19 +54,19 @@ import { GetBookingsByServiceUseCase } from '../../../../domain/use-cases/get-bo
   templateUrl: './service-detail.component.html',
   styleUrl: './service-detail.component.scss',
 })
-export class ServiceDetailComponent implements OnInit, OnDestroy {
+export class ServiceDetailComponent {
   isLoading = signal(false);
   bookingStore = inject(BookingStore);
   route = inject(ActivatedRoute);
   router = inject(Router);
   dialog = inject(MatDialog);
   private _snackbar = inject(MatSnackBar);
-  private suscriptions: Subscription[] = [];
   service = this.bookingStore.selectedServiceId;
   private readonly saveBookingUseCase = inject(SaveBookingUseCase);
   private readonly getBookingsByServiceUseCase = inject(
     GetBookingsByServiceUseCase
   );
+  private loadSubscription?: Subscription;
   displayedColumns: string[] = [
     'employeeName',
     'serviceDetailName',
@@ -75,13 +75,18 @@ export class ServiceDetailComponent implements OnInit, OnDestroy {
   ];
   dataSource = new MatTableDataSource<BookingRow>([]);
 
-  ngOnInit(): void {
-    this.loadBookings();
+  constructor() {
+    effect(() => {
+      const id = this.service()?.id;
+      untracked(() => this.loadBookings(id));
+    });
+
+    inject(DestroyRef).onDestroy(() => this.loadSubscription?.unsubscribe());
   }
 
-  loadBookings() {
-    const serviceModel = this.bookingStore.selectedServiceId;
-    var id = serviceModel()?.id;
+  loadBookings(id = this.service()?.id) {
+    // Drop any load still in flight so an older response can't overwrite a newer one.
+    this.loadSubscription?.unsubscribe();
 
     if (!id) {
       this.dataSource.data = [];
@@ -89,26 +94,16 @@ export class ServiceDetailComponent implements OnInit, OnDestroy {
     }
 
     this.isLoading.set(true);
-    this.suscriptions.push(
-      this.getBookingsByServiceUseCase.execute(id).subscribe({
-        next: (bookings) => {
-          this.dataSource.data = bookings;
-          this.isLoading.set(false);
-        },
-        error: (err) => {
+    this.loadSubscription = this.getBookingsByServiceUseCase
+      .execute(id)
+      .pipe(finalize(() => this.isLoading.set(false)))
+      .subscribe({
+        next: (bookings) => (this.dataSource.data = bookings),
+        error: (err) =>
           this._snackbar.open(this.toUserMessage(err), '', {
             duration: 3000,
-          });
-          this.isLoading.set(false);
-        },
-      })
-    );
-  }
-
-  ngOnDestroy(): void {
-    if (this.suscriptions.length > 0) {
-      this.suscriptions.forEach((s) => s.unsubscribe());
-    }
+          }),
+      });
   }
 
   openModal(detail: any) {
@@ -121,28 +116,28 @@ export class ServiceDetailComponent implements OnInit, OnDestroy {
 
     modal.saveRequested$
       .pipe(
-        tap(() => modal.setLoading(true)),
-        delay(5000),
-        switchMap((dto) =>
-          this.saveBookingUseCase.execute(dto).pipe(
-            tap((saved) => dialogRef.close(saved)),
+        exhaustMap((dto) => {
+          modal.setLoading(true);
+          return this.saveBookingUseCase.execute(dto).pipe(
             catchError((err) => {
               modal.setError(this.toUserMessage(err));
               return EMPTY;
             }),
             finalize(() => modal.setLoading(false))
-          )
-        )
+          );
+        }),
+        takeUntil(dialogRef.afterClosed())
       )
-      .subscribe();
+      .subscribe((saved) => dialogRef.close(saved));
 
     dialogRef
       .afterClosed()
       .pipe(filter(Boolean))
-      .subscribe((saved) => {
+      .subscribe(() => {
         this._snackbar.open('Booking saved successfully!', '', {
           duration: 3000,
         });
+        this.loadBookings();
       });
   }
 

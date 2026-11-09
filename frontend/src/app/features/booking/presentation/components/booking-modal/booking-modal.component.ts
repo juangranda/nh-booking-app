@@ -23,7 +23,7 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatSelectModule } from '@angular/material/select';
 import { MatOptionModule } from '@angular/material/core';
 import Booking from '../../../domain/models/booking.model';
-import { Subject } from 'rxjs/internal/Subject';
+import { Subject } from 'rxjs';
 import { MatProgressSpinner } from '@angular/material/progress-spinner';
 import { AuthStore } from '../../../../../core/state/auth.store';
 
@@ -54,6 +54,8 @@ export class BookingModal {
   maxDate = new Date();
   loading = false;
   errorMsg: string | null = null;
+  private readonly openHour = 9;
+  private readonly closeHour = 17;
   readonly saveRequested$ = new Subject<any>();
 
   constructor(
@@ -117,7 +119,7 @@ export class BookingModal {
         return;
       }
 
-      if (!this.isBusinessHours(start) || !this.isBusinessHours(end)) {
+      if (!this.isWithinBusinessHours(start, end)) {
         this.showInvalidBookingMessage(
           'Bookings must be between 9:00 AM and 5:00 PM.'
         );
@@ -166,9 +168,13 @@ export class BookingModal {
     }
   }
 
-  private isBusinessHours(dateTime: Date): boolean {
-    const hour = dateTime.getHours();
-    return hour >= 9 && hour < 17;
+  private isWithinBusinessHours(start: Date, end: Date): boolean {
+    const minutes = (d: Date) => d.getHours() * 60 + d.getMinutes();
+    return (
+      start.toDateString() === end.toDateString() &&
+      minutes(start) >= this.openHour * 60 &&
+      minutes(end) <= this.closeHour * 60
+    );
   }
 
   showInvalidBookingMessage(message: string) {

@@ -1,7 +1,9 @@
-import { Component, inject, OnDestroy, OnInit } from '@angular/core';
+import { Component, inject } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
   ActivatedRoute,
   NavigationEnd,
+  ParamMap,
   Router,
   RouterOutlet,
 } from '@angular/router';
@@ -12,7 +14,7 @@ import { GetWorkingPlacesUseCase } from './domain/use-cases/get-working-places.u
 import { ServiceRepository } from './domain/repositories/service.repository';
 import { ServiceImplRepository } from './data/repositories/service-impl.repository';
 import { BookingStore } from './presentation/state/booking.store';
-import { filter, Subscription, switchMap } from 'rxjs';
+import { combineLatest, filter, map, shareReplay } from 'rxjs';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { SaveBookingUseCase } from './domain/use-cases/save-booking.usecase';
 import { BookingRepository } from './domain/repositories/booking.repository';
@@ -43,57 +45,60 @@ import { GetBookingsByServiceUseCase } from './domain/use-cases/get-bookings-by-
   ],
   template: `<router-outlet></router-outlet>`,
 })
-export class BookingComponent implements OnInit, OnDestroy {
+export class BookingComponent {
   bookingStore = inject(BookingStore);
-  private suscriptions: Subscription[] = [];
   private _snackbar = inject(MatSnackBar);
   route = inject(ActivatedRoute);
   router = inject(Router);
-  ngOnInit(): void {
+
+  private readonly params$ = this.router.events.pipe(
+    filter((e) => e instanceof NavigationEnd),
+    map(() => this.deepestParams()),
+    shareReplay({ bufferSize: 1, refCount: true })
+  );
+
+  constructor() {
     this.bookingStore.onLoad();
-    const wkplaceSub = this.bookingStore.workingPlaces$
-      .pipe(
-        filter((list) => list.length > 0),
-        switchMap(() => this.route.paramMap)
-      )
-      .subscribe((params) => {
-        console.log('BookingComponent 2 - Retrieved route params:', params);
+
+    combineLatest([
+      this.bookingStore.workingPlaces$.pipe(filter((list) => list.length > 0)),
+      this.params$,
+    ])
+      .pipe(takeUntilDestroyed())
+      .subscribe(([, params]) => {
         const id = params.get('id');
         if (id) {
-          try {
-            this.bookingStore.setSelectedOfficeId(Number(id));
-          } catch (err: any) {
-            this._snackbar.open(err.message, '', { duration: 3000 });
-            this.router.navigate(['booking', 'working-place']);
-          }
+          this.select(() => this.bookingStore.setSelectedOfficeId(Number(id)));
         }
       });
-    this.suscriptions.push(wkplaceSub);
-    const servSub = this.bookingStore.services$
-      .pipe(
-        filter((s) => s.length > 0),
-        switchMap(() => this.route.paramMap)
-      )
-      .subscribe((params) => {
+
+    combineLatest([this.bookingStore.services$, this.params$])
+      .pipe(takeUntilDestroyed())
+      .subscribe(([services, params]) => {
+        const id = Number(params.get('id'));
         const sId = params.get('sId');
-        console.log(
-          'ServiceDetailComponent - Retrieved sId from route params:',
-          sId
-        );
-        if (sId) {
-          try {
-            this.bookingStore.setServiceId(Number(sId));
-          } catch (err: any) {
-            this._snackbar.open(err.message, '', { duration: 3000 });
-            this.router.navigate(['booking', 'working-place']);
-          }
+        // Wait until the services for the office in the URL have loaded.
+        if (!sId || services.length === 0 || services[0].officeId !== id) {
+          return;
         }
+        this.select(() => this.bookingStore.setServiceId(Number(sId)));
       });
-    this.suscriptions.push(servSub);
   }
-  ngOnDestroy(): void {
-    if (this.suscriptions.length > 0) {
-      this.suscriptions.forEach((s) => s.unsubscribe());
+
+  private deepestParams(): ParamMap {
+    let route = this.route;
+    while (route.firstChild) {
+      route = route.firstChild;
+    }
+    return route.snapshot.paramMap;
+  }
+
+  private select(action: () => void) {
+    try {
+      action();
+    } catch (err: any) {
+      this._snackbar.open(err.message, '', { duration: 3000 });
+      this.router.navigate(['booking', 'working-place']);
     }
   }
 }

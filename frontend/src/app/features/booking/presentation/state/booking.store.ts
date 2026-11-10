@@ -1,10 +1,9 @@
-import { inject, Injectable, linkedSignal, signal } from '@angular/core';
+import { inject, Injectable, signal } from '@angular/core';
 import Office from '../../domain/models/office.model';
-import { BehaviorSubject, combineLatest, filter, firstValueFrom } from 'rxjs';
+import { BehaviorSubject, firstValueFrom } from 'rxjs';
 import ServiceModel from '../../domain/models/service.model';
 import { GetWorkingPlacesUseCase } from '../../domain/use-cases/get-working-places.usecase';
 import { GetServicesUseCase } from '../../domain/use-cases/get-services.usecase';
-import { ActivatedRoute, NavigationEnd, Router } from '@angular/router';
 
 @Injectable()
 export class BookingStore {
@@ -18,61 +17,11 @@ export class BookingStore {
   private readonly _services = new BehaviorSubject<ServiceModel[]>([]);
   readonly services$ = this._services.asObservable();
   readonly selectedServiceId = signal<ServiceModel | null>(null);
+
+  //TODO: Nothing uses this now. Need to implement a spinner using this flag.
   isLoadingServices = signal(false);
-  router = inject(Router);
-  rootRoute = inject(ActivatedRoute);
 
-  constructor() {
-    this.router.events
-      .pipe(filter((e) => e instanceof NavigationEnd))
-      .subscribe(() => this.checkRouteState());
-  }
-  private checkRouteState() {
-    // --- Handle working place logic ---
-    combineLatest([this.workingPlaces$, this.rootRoute.paramMap])
-      .pipe(filter(([places]) => places.length > 0))
-      .subscribe(([places]) => {
-        const params = this.getDeepRouteParams();
-        const wId = params['id'];
-        if (wId) {
-          try {
-            this.setSelectedOfficeId(Number(wId));
-          } catch (err: any) {
-            console.warn('Invalid working place ID:', err.message);
-            this.router.navigate(['booking', 'working-place']);
-          }
-        }
-      });
-
-    // --- Handle service logic ---
-    combineLatest([this.services$, this.rootRoute.paramMap])
-      .pipe(filter(([services]) => services.length > 0))
-      .subscribe(([services]) => {
-        const params = this.getDeepRouteParams();
-        const sId = params['sId'];
-        if (sId) {
-          try {
-            this.setServiceId(Number(sId));
-          } catch (err: any) {
-            console.warn('Invalid service ID:', err.message);
-            this.router.navigate(['booking', 'working-place']);
-          }
-        }
-      });
-  }
-  private getDeepRouteParams(): Record<string, string> {
-    let route = this.rootRoute;
-    while (route.firstChild) {
-      route = route.firstChild;
-    }
-
-    const paramMap = route.snapshot.paramMap;
-    const params: Record<string, string> = {};
-    for (const key of paramMap.keys) {
-      params[key] = paramMap.get(key)!;
-    }
-    return params;
-  }
+  private servicesRequest = 0;
 
   getServices() {
     return this._services.value;
@@ -88,24 +37,25 @@ export class BookingStore {
 
   setServiceId(sId: number) {
     const service = this._services.value.find((s) => s.id === sId);
-    if (!!service) {
-      this.selectedServiceId.set(service);
-    } else {
+    if (!service) {
       throw Error('The id cannot be found');
+    }
+    if (this.selectedServiceId()?.id !== sId) {
+      this.selectedServiceId.set(service);
     }
   }
 
   setSelectedOfficeId(id: number) {
-    if (!this.selectedOfficeId() && this.selectedOfficeId()?.id === id) {
+    if (this.selectedOfficeId()?.id === id) {
       return;
     }
     const place = this._workingPlaces.value.find((place) => place.id === id);
-    if (!!place) {
-      this.selectedOfficeId.set(place);
-      this.loadServices(id);
-    } else {
+    if (!place) {
       throw Error('The id cannot be found');
     }
+    this.selectedOfficeId.set(place);
+    this.selectedServiceId.set(null);
+    this.loadServices(id);
   }
 
   setWorkingPlaces(places: Office[]) {
@@ -116,31 +66,24 @@ export class BookingStore {
     const wPlaces = await firstValueFrom(
       this.getWorkingPlacesUseCase.execute()
     );
-    console.log('wPlaces', wPlaces);
     this.setWorkingPlaces(wPlaces);
-
-    //TESTING
-    // if (wPlaces.length > 0) {
-    //   this.setSelectedWorkingPlaceId(wPlaces[0].id);
-    // }
   }
 
   async loadServices(officeId: number) {
+    const request = ++this.servicesRequest;
+    const isLatest = () => request === this.servicesRequest;
+
+    this.setServices([]);
+    this.isLoadingServices.set(true);
     try {
-      this.isLoadingServices.set(true);
       const services = await firstValueFrom(
         this.getServicesUseCase.execute(officeId)
       );
-      this.setServices(services);
-
-      // TESTING
-      // if (services.length > 0) {
-      //   this.setServiceId(services[0].id);
-      // }
+      if (isLatest()) this.setServices(services);
     } catch {
-      this.setServices([]);
+      if (isLatest()) this.setServices([]);
     } finally {
-      this.isLoadingServices.set(false);
+      if (isLatest()) this.isLoadingServices.set(false);
     }
   }
 }

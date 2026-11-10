@@ -16,7 +16,7 @@ export class ServiceCardComponent {
   characteristics = linkedSignal(() => {
     return [
       {
-        name: "Cantidad",
+        name: "Quantity",
         value: this.service().quantity
       },
       {

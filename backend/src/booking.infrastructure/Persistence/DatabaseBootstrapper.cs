@@ -8,7 +8,15 @@ namespace booking.infrastructure.Persistence;
 
 public static class DatabaseBootstrapper
 {
-	public static async Task InitAsync(AppDbContext db, string schemaPath, CancellationToken ct = default)
+	// Password of the demo accounts. Only ever used when demo data is seeded.
+	public const string DemoPassword = "P@ssw0rd!";
+	private static readonly string[] DemoEmails =
+	{
+		"admin@demo.com", "sarah.johnson@company.com", "michael.chen@company.com", "emma.rodriguez@company.com",
+	};
+
+	public static async Task InitAsync(AppDbContext db, string schemaPath, bool seedDemoData,
+		string? adminEmail, string? adminPassword, CancellationToken ct = default)
 	{
 		bool usersTableExists;
 		await db.Database.OpenConnectionAsync(ct);
@@ -40,7 +48,55 @@ public static class DatabaseBootstrapper
 			await tx.CommitAsync(ct);
 		}
 
-		await SeedAsync(db, ct);
+		// Roles and permissions are needed in every environment.
+		await SeedRolesAsync(db, ct);
+
+		if (seedDemoData)
+		{
+			await SeedDemoDataAsync(db, ct);
+		}
+
+		if (!string.IsNullOrWhiteSpace(adminEmail) && !string.IsNullOrWhiteSpace(adminPassword))
+		{
+			await EnsureAdminAsync(db, adminEmail.Trim(), adminPassword, ct);
+		}
+	}
+
+	public static async Task<List<string>> FindDemoAccountsAsync(AppDbContext db, CancellationToken ct = default)
+	{
+		var hasher = new PasswordHasher<User>();
+		var users = await db.Users.AsNoTracking().Where(u => DemoEmails.Contains(u.Email)).ToListAsync(ct);
+		return users
+			.Where(u => u.PasswordHash is not null &&
+				hasher.VerifyHashedPassword(u, u.PasswordHash, DemoPassword) != PasswordVerificationResult.Failed)
+			.Select(u => u.Email!)
+			.ToList();
+	}
+
+	private static async Task EnsureAdminAsync(AppDbContext db, string email, string password, CancellationToken ct)
+	{
+		if (await db.Users.AnyAsync(u => u.Email == email, ct))
+		{
+			return;
+		}
+		if (password.Length < 12)
+		{
+			throw new InvalidOperationException("Seed:AdminPassword must be at least 12 characters.");
+		}
+
+		var user = new User { UserName = email.Split('@')[0], Email = email, EmailConfirmed = true };
+		user.PasswordHash = new PasswordHasher<User>().HashPassword(user, password);
+		user.Roles.Add(new UserRole { User = user, RoleId = "r_admin" });
+		db.Users.Add(user);
+		db.Employees.Add(new Employee
+		{
+			User = user,
+			FirstName = "Admin",
+			LastName = "Admin",
+			Email = email,
+			CreatedAt = DateTime.Now
+		});
+		await db.SaveChangesAsync(ct);
 	}
 
 	private static async Task EnsureRoleAsync(AppDbContext db, string roleId, string name, CancellationToken ct)
@@ -67,7 +123,39 @@ public static class DatabaseBootstrapper
 	private static IEnumerable<string> SplitSqlStatements(string sql) =>
 		sql.Replace("\r", "").Split(";\n", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
-	private static async Task SeedAsync(AppDbContext db, CancellationToken ct)
+	private static async Task SeedRolesAsync(AppDbContext db, CancellationToken ct)
+	{
+		await EnsureRoleAsync(db, roleId:"r_admin", name:"Admin", ct);
+		await EnsureRoleAsync(db, roleId:"r_user", name:"User", ct);
+
+		string[] adminPermissions =
+		{
+			Permissions.Bookings.Read, Permissions.Bookings.Create, Permissions.Bookings.Update, Permissions.Bookings.Delete,
+			Permissions.Services.Read, Permissions.Services.Create, Permissions.Services.Update, Permissions.Services.Delete,
+			Permissions.Offices.Read, Permissions.Offices.Create, Permissions.Offices.Update, Permissions.Offices.Delete,
+		};
+
+		string[] userPermissions =
+		{
+			Permissions.Bookings.Read, Permissions.Bookings.Create, Permissions.Bookings.Update, Permissions.Bookings.Delete,
+			Permissions.Services.Read,
+			Permissions.Offices.Read,
+		};
+
+		foreach (var permission in adminPermissions)
+		{
+			await EnsureRoleClaimAsync(db, "r_admin", permission, ct);
+		}
+		foreach (var permission in userPermissions)
+		{
+			await EnsureRoleClaimAsync(db, "r_user", permission, ct);
+		}
+
+		await db.SaveChangesAsync(ct);
+	}
+
+	// Demo accounts (all with DemoPassword), offices, services and a sample booking.
+	private static async Task SeedDemoDataAsync(AppDbContext db, CancellationToken ct)
 	{
 		var existingEmployeesUsers = await db.Users
 			.Where(u => u.Id >= 1 && u.Id <= 4)
@@ -110,41 +198,15 @@ public static class DatabaseBootstrapper
 			};
 
 			foreach (var u in users)
-				u.PasswordHash = hasher.HashPassword(u, "P@ssw0rd!");
+				u.PasswordHash = hasher.HashPassword(u, DemoPassword);
 
 			db.Users.AddRange(users);
 		}
-
-		await EnsureRoleAsync(db, roleId:"r_admin", name:"Admin", ct);
-		await EnsureRoleAsync(db, roleId:"r_user", name:"User", ct);
 
 		await EnsureUserRoleAsync(db, 1, "r_admin", ct);
 		foreach (var userId in new[] { 2, 3, 4 })
 		{
 			await EnsureUserRoleAsync(db, userId, "r_user", ct);
-		}
-
-		string[] adminPermissions =
-		{
-			Permissions.Bookings.Read, Permissions.Bookings.Create, Permissions.Bookings.Update, Permissions.Bookings.Delete,
-			Permissions.Services.Read, Permissions.Services.Create, Permissions.Services.Update, Permissions.Services.Delete,
-			Permissions.Offices.Read, Permissions.Offices.Create, Permissions.Offices.Update, Permissions.Offices.Delete,
-		};
-
-		string[] userPermissions =
-		{
-			Permissions.Bookings.Read, Permissions.Bookings.Create, Permissions.Bookings.Update, Permissions.Bookings.Delete,
-			Permissions.Services.Read,
-			Permissions.Offices.Read,
-		};
-
-		foreach (var permission in adminPermissions)
-		{
-			await EnsureRoleClaimAsync(db, "r_admin", permission, ct);
-		}
-		foreach (var permission in userPermissions)
-		{
-			await EnsureRoleClaimAsync(db, "r_user", permission, ct);
 		}
 
 		if (!await db.Offices.AnyAsync(ct))

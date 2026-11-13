@@ -92,6 +92,7 @@ builder.Services.AddFluentValidationAutoValidation()
 builder.Services.AddValidatorsFromAssemblyContaining<RegisterRequestValidator>();
 
 builder.Services.Configure<BookingOptions>(builder.Configuration.GetSection(BookingOptions.SectionName));
+builder.Services.Configure<SeedOptions>(builder.Configuration.GetSection(SeedOptions.SectionName));
 
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IServicesService, ServicesService>();

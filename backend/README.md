@@ -38,9 +38,24 @@ Production / other environments: set the `Jwt__Key` environment variable.
 
 Changing the key invalidates all previously issued tokens, so users must log in again.
 
+## Seed data and the first admin
+
+On startup the API creates the schema (if missing) and the `Admin` and `User` roles with their permissions, in every environment.
+
+Demo data is only created in **Development**: the accounts `admin@demo.com`, `sarah.johnson@company.com`, `michael.chen@company.com` and `emma.rodriguez@company.com` (password `P@ssw0rd!`), two offices, two services and a sample booking. Set `Seed__DemoData=true` to create it in another environment (for example a shared demo server), or `false` to skip it locally.
+
+Outside Development, create the first admin with environment variables:
+
+```bash
+export Seed__AdminEmail=ops@company.com
+export Seed__AdminPassword='<at least 12 characters>'
+```
+
+The account (with the `Admin` role and an employee record) is only created when that email doesn't exist yet, so the variables can be removed after the first start. If a non-Development database still has demo accounts with the demo password, the API logs a warning at startup.
+
 ## Run (development)
 
-Run the API from its project folder (the database bootstrapper currently resolves `schema.sql` relative to it):
+Run the API from its project folder, so `app.db` is created there:
 
 ```bash
 cd src/booking.api

@@ -1,6 +1,7 @@
 using System.Globalization;
 using FluentValidation;
 using booking.core.DTOs;
+using booking.core.Rules;
 
 public class RegisterRequestValidator : AbstractValidator<RegisterRequest>
 {
@@ -32,6 +33,11 @@ public class ServiceUpsertDtoValidator : AbstractValidator<ServiceUpsertDto>
 		RuleFor(x => x.officeId).GreaterThan(0);
 		RuleFor(x => x.quantity).GreaterThanOrEqualTo(0).When(x => x.quantity.HasValue);
 		RuleFor(x => x.maxBookingsPerWeek).GreaterThan(0).When(x => x.maxBookingsPerWeek.HasValue);
+		RuleFor(x => x.bookingPerTime).GreaterThan(0).When(x => x.bookingPerTime.HasValue);
+		RuleFor(x => x.minMax)
+			.Must(v => DurationRange.TryParse(v, out _, out _))
+			.When(x => !string.IsNullOrWhiteSpace(x.minMax))
+			.WithMessage("'minMax' must be the booking length in minutes as \"min-max\", e.g. \"15-45\".");
 		RuleFor(x => x.serviceDetails).NotNull();
 		RuleForEach(x => x.serviceDetails).ChildRules(detail =>
 		{

@@ -154,7 +154,6 @@ public static class DatabaseBootstrapper
 		await db.SaveChangesAsync(ct);
 	}
 
-	// Demo accounts (all with DemoPassword), offices, services and a sample booking.
 	private static async Task SeedDemoDataAsync(AppDbContext db, CancellationToken ct)
 	{
 		var existingEmployeesUsers = await db.Users

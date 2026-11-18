@@ -5,6 +5,7 @@ using booking.core.Constants;
 using booking.core.DTOs;
 using booking.core.Models;
 using booking.core.Options;
+using booking.core.Rules;
 using booking.infrastructure.Persistence;
 
 namespace booking.infrastructure.Services;
@@ -197,6 +198,17 @@ public class BookingService : IBookingService
 			return (false, Codes.BookingInvalid, "The selected service detail doesn't exist.");
 		}
 
+		if (DurationRange.TryParse(detail.Service?.MinMax, out var minMinutes, out var maxMinutes))
+		{
+			var minutes = (end - start).TotalMinutes;
+			if (minutes < minMinutes || minutes > maxMinutes)
+			{
+				return (false, Codes.BookingInvalid,
+					$"{detail.Service!.Name} bookings must last between {minMinutes} and {maxMinutes} minutes.");
+			}
+		}
+
+		// Capacity is the room size, not a limit on overlapping bookings: one booking per detail at a time.
 		var overlaps = await _db.Bookings.AnyAsync(b =>
 			b.ServiceDetailId == serviceDetailId &&
 			b.Id != currentId &&
@@ -223,6 +235,22 @@ public class BookingService : IBookingService
 			if (bookingsThisWeek >= maxPerWeek)
 			{
 				return (false, Codes.BookingLimitReached, $"You've reached the limit of {maxPerWeek} bookings per week for {detail.Service!.Name}.");
+			}
+		}
+
+		var maxUpcoming = detail.Service?.BookingPerTime;
+		if (maxUpcoming is > 0)
+		{
+			var now = DateTime.Now;
+			var upcoming = await _db.Bookings.CountAsync(b =>
+				b.EmployeeId == employeeId &&
+				b.Id != currentId &&
+				b.ServiceDetail!.ServiceId == detail.ServiceId &&
+				b.EndDatetime > now, ct);
+			if (upcoming >= maxUpcoming)
+			{
+				return (false, Codes.BookingLimitReached,
+					$"You can have at most {maxUpcoming} upcoming bookings for {detail.Service!.Name}. Wait until one has passed or delete one.");
 			}
 		}
 
